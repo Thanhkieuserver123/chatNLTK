@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatNLTK</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #212121; color: #ececec; font-family: system-ui, -apple-system, sans-serif; }
+    .chat-bubble-user { background-color: #303030; border-radius: 1.25rem; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background-color: #424242; border-radius: 3px; }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+  <!-- SIDEBAR (Giao diện ChatNLTK) -->
+  <div class="w-64 bg-[#171717] p-3 hidden md:flex flex-col justify-between border-r border-[#2f2f2f]">
+    <div>
+      <button class="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[#212121] text-sm text-gray-200">
+        <span class="font-medium"><i class="fa-regular font-bold fa-pen-to-square mr-2"></i> Đoạn chat mới</span>
+      </button>
+      <div class="mt-4 text-xs font-semibold text-gray-500 px-2">Gần đây</div>
+      <div class="mt-2 space-y-1 text-sm text-gray-300">
+        <div class="p-2 rounded-lg hover:bg-[#212121] cursor-pointer truncate">Hỏi đáp kiến thức...</div>
+      </div>
+    </div>
+    <div class="text-xs text-gray-500 p-2 border-t border-[#2f2f2f]">Status: Connected (Ntfy)</div>
+  </div>
+
+  <!-- CHÍNH: KHUNG CHAT CỦA NẠN NHÂN -->
+  <div class="flex-1 flex flex-col h-full relative">
+    <!-- Header -->
+    <div class="h-14 border-b border-[#2f2f2f] flex items-center justify-between px-4 select-none">
+      <div id="headerTitle" class="font-semibold text-lg cursor-pointer hover:opacity-80" title="Nhấp đúp để mở bảng Điều Khiển Secret">
+        ChatNLTK <span class="text-xs px-2 py-0.5 bg-gray-700 rounded-full font-normal text-gray-300">4o</span>
+      </div>
+      <button onclick="toggleAdminPanel()" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 px-3 py-1.5 rounded-lg border border-gray-700">
+        <i class="fa-solid fa-user-shield mr-1"></i> Mode Admin (Ctrl+Shift+K)
+      </button>
+    </div>
+
+    <!-- Khung tin nhắn -->
+    <div id="chatBox" class="flex-1 overflow-y-auto p-4 md:p-10 space-y-6 custom-scroll">
+      <div id="welcomeMsg" class="h-full flex flex-col items-center justify-center text-center">
+        <div class="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center text-2xl font-bold mb-4">GPT</div>
+        <h2 class="text-2xl font-semibold">Tôi có thể giúp gì cho bạn hôm nay?</h2>
+      </div>
+    </div>
+
+    <!-- Ô nhập tin nhắn nạn nhân -->
+    <div class="p-4 max-w-3xl w-full mx-auto">
+      <div class="bg-[#2f2f2f] rounded-3xl p-3 flex items-end shadow-lg border border-[#3e3e3e]">
+        <textarea id="userInput" rows="1" placeholder="Gửi tin nhắn cho ChatNLTK..." class="w-full bg-transparent text-white focus:outline-none resize-none px-2 max-h-32 custom-scroll" onkeydown="handleEnter(event)"></textarea>
+        <button onclick="victimSend()" class="bg-white text-black p-2 rounded-full w-8 h-8 flex items-center justify-center hover:opacity-80 transition">
+          <i class="fa-solid fa-arrow-up text-sm"></i>
+        </button>
+      </div>
+      <p class="text-xs text-center text-gray-500 mt-2">ChatNLTK có thể đưa ra thông tin không chính xác vì tui là người haha.</p>
+    </div>
+  </div>
+
+  <!-- BẢNG ĐIỀU KHIỂN BÍ MẬT (DÀNH CHO BẠN - OPERATOR) -->
+  <div id="adminPanel" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#18181b] border border-gray-700 w-full max-w-lg rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center border-b border-gray-800 pb-3">
+        <h3 class="text-lg font-bold text-green-400"><i class="fa-solid fa-terminal mr-2"></i>Bảng Trả Lời Giả Lập ChatGPT</h3>
+        <button onclick="toggleAdminPanel()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+
+      <div class="text-xs text-gray-400">
+        Mã phòng hiện tại: <span id="displayRoomId" class="text-yellow-400 font-mono font-bold"></span>
+      </div>
+
+      <!-- Nhật ký nhận tin nhắn nạn nhân -->
+      <div class="bg-black/50 p-3 rounded-lg border border-gray-800 h-32 overflow-y-auto text-sm space-y-2 custom-scroll" id="adminLog">
+        <div class="text-gray-500 italic">Chờ nạn nhân nhắn tin...</div>
+      </div>
+
+      <!-- Ô nhập câu trả lời của Operator -->
+      <div class="space-y-2">
+        <label class="text-xs text-gray-300 font-medium">Nhập câu trả lời (Gửi dưới danh nghĩa ChatNLTK):</label>
+        <textarea id="operatorInput" rows="3" placeholder="Ví dụ: Chào bạn, tôi biết bạn đang làm gì đấy nhé..." class="w-full bg-[#27272a] border border-gray-700 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 text-white resize-none"></textarea>
+      </div>
+
+      <div class="flex justify-between items-center pt-2">
+        <button onclick="copyVictimLink()" class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-gray-300 border border-gray-700">
+          <i class="fa-solid fa-copy mr-1"></i> Copy Link Gửi Nạn Nhân
+        </button>
+        <button onclick="operatorSend()" class="bg-green-600 hover:bg-green-500 font-semibold text-white px-5 py-2 rounded-lg text-sm transition">
+          Gửi Trả Lời <i class="fa-solid fa-paper-plane ml-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. CẤU HÌNH PHÒNG CHAT (Tự động lấy theo URL parameter ?room=xxx hoặc ngẫu nhiên)
+    const urlParams = new URLSearchParams(window.location.search);
+    let roomId = urlParams.get('room');
+    if (!roomId) {
+      roomId = 'room_' + Math.random().toString(36).substring(2, 8);
+      window.history.replaceState(null, '', `?room=${roomId}`);
+    }
+    document.getElementById('displayRoomId').innerText = roomId;
+
+    const TOPIC_Q = `chatgpt_prank_${roomId}_q`; // Nạn nhân hỏi
+    const TOPIC_A = `chatgpt_prank_${roomId}_a`; // Operator trả lời
+
+    let currentThinkingBubble = null;
+
+    // 2. KẾT NỐI NTFY SSE (Nhận tin nhắn thời gian thực)
+    // Lắng nghe câu hỏi Nạn nhân (Cho Bảng Admin)
+    const esQ = new EventSource(`https://ntfy.sh/${TOPIC_Q}/sse`);
+    esQ.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.event === 'message') {
+        onReceiveVictimQuestion(data.message);
+      }
+    };
+
+    // Lắng nghe câu trả lời Operator (Cho Màn hình Nạn nhân)
+    const esA = new EventSource(`https://ntfy.sh/${TOPIC_A}/sse`);
+    esA.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.event === 'message') {
+        onReceiveOperatorAnswer(data.message);
+      }
+    };
+
+    // 3. XỬ LÝ GỬI/NHẬN PHÍA NẠN NHÂN
+    function victimSend() {
+      const input = document.getElementById('userInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      document.getElementById('welcomeMsg')?.remove();
+
+      // Hiển thị tin nhắn người dùng
+      appendMessage('user', text);
+      input.value = '';
+
+      // Hiển thị bong bóng "ChatNLTK đang suy nghĩ..."
+      currentThinkingBubble = appendThinkingBubble();
+
+      // Gửi câu hỏi tới Operator qua Ntfy
+      fetch(`https://ntfy.sh/${TOPIC_Q}`, { method: 'POST', body: text });
+    }
+
+    function onReceiveOperatorAnswer(text) {
+      // Xóa bong bóng suy nghĩ nếu có
+      if (currentThinkingBubble) {
+        currentThinkingBubble.remove();
+        currentThinkingBubble = null;
+      }
+
+      // Tạo bong bóng phản hồi và chạy hiệu ứng gõ từng chữ
+      const msgDiv = appendMessage('bot', '');
+      typeEffect(msgDiv, text);
+    }
+
+    // 4. XỬ LÝ GỬI/NHẬN PHÍA OPERATOR (ADMIN)
+    function onReceiveVictimQuestion(text) {
+      const adminLog = document.getElementById('adminLog');
+      const time = new Date().toLocaleTimeString();
+      adminLog.innerHTML += `
+        <div class="text-xs border-b border-gray-800 pb-1">
+          <span class="text-gray-500">[${time}]</span> <b class="text-yellow-400">Nạn nhân:</b> ${text}
+        </div>
+      `;
+      adminLog.scrollTop = adminLog.scrollHeight;
+
+      // Tự động mở hoặc phát âm thanh báo nếu muốn
+      playBeepSound();
+    }
+
+    function operatorSend() {
+      const input = document.getElementById('operatorInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      // Gửi câu trả lời tới Nạn nhân qua Ntfy
+      fetch(`https://ntfy.sh/${TOPIC_A}`, { method: 'POST', body: text });
+
+      const adminLog = document.getElementById('adminLog');
+      adminLog.innerHTML += `<div class="text-xs text-green-400"><b>Bạn đã trả lời:</b> ${text}</div>`;
+      adminLog.scrollTop = adminLog.scrollHeight;
+      input.value = '';
+    }
+
+    // 5. HIỆU ỨNG GIAO DIỆN & TIỆN ÍCH
+    function appendMessage(role, text) {
+      const chatBox = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      div.className = `flex gap-4 ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+
+      if (role === 'user') {
+        div.innerHTML = `<div class="chat-bubble-user px-4 py-2.5 max-w-[80%] text-white text-sm">${text}</div>`;
+      } else {
+        div.innerHTML = `
+          <div class="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs shrink-0 mt-1">GPT</div>
+          <div class="msg-content text-sm leading-relaxed text-gray-200 pt-1 max-w-[85%]">${text}</div>
+        `;
+      }
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return div.querySelector('.msg-content') || div;
+    }
+
+    function appendThinkingBubble() {
+      const chatBox = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      div.className = 'flex gap-4 justify-start';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs shrink-0">GPT</div>
+        <div class="text-sm text-gray-400 flex items-center gap-1 pt-1">
+          <span>ChatNLTK đang suy nghĩ</span>
+          <span class="animate-pulse">...</span>
+        </div>
+      `;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return div;
+    }
+
+    function typeEffect(element, text, speed = 25) {
+      let index = 0;
+      element.textContent = '';
+      const timer = setInterval(() => {
+        if (index < text.length) {
+          element.textContent += text.charAt(index);
+          index++;
+          document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
+        } else {
+          clearInterval(timer);
+        }
+      }, speed);
+    }
+
+    function toggleAdminPanel() {
+      const panel = document.getElementById('adminPanel');
+      panel.classList.toggle('hidden');
+    }
+
+    function copyVictimLink() {
+      navigator.clipboard.writeText(window.location.href);
+      alert("Đã sao chép đường dẫn có mã phòng này gửi cho nạn nhân!");
+    }
+
+    function handleEnter(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        victimSend();
+      }
+    }
+
+    function playBeepSound() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.connect(ctx.destination);
+        osc.frequency.value = 800;
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      } catch(e) {}
+    }
+
+    // Phím tắt mở Admin Panel (Ctrl + Shift + K) hoặc nhấp đúp tiêu đề
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'K') {
+        e.preventDefault();
+        toggleAdminPanel();
+      }
+    });
+    document.getElementById('headerTitle').addEventListener('dblclick', toggleAdminPanel);
+  </script>
+</body>
+</html>
